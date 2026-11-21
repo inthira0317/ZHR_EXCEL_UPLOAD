@@ -1,0 +1,135 @@
+*&---------------------------------------------------------------------*
+*& Report ZHR_EXCEL_UPLOAD
+*&---------------------------------------------------------------------*
+REPORT zhr_excel_upload.
+TYPE-POOLS: truxs.
+*---------------------------------------------------------------------*
+* Excel Upload Structure
+*---------------------------------------------------------------------*
+TYPES: BEGIN OF ty_final,
+         col1(30) TYPE c,
+         col2(30) TYPE c,
+         col3(30) TYPE c,
+         col4(30) TYPE c,
+         col5(30) TYPE c,
+         col6(30) TYPE c,
+       END OF ty_final.
+*---------------------------------------------------------------------*
+* Data Declaration
+*---------------------------------------------------------------------*
+DATA:
+  gs_final TYPE ty_final,
+  gt_final TYPE STANDARD TABLE OF ty_final,
+
+  gs_avl   TYPE zhr_ess_coff_avl,
+  gt_avl   TYPE STANDARD TABLE OF zhr_ess_coff_avl,
+
+  gs_raw   TYPE truxs_t_text_data.
+*---------------------------------------------------------------------*
+* Selection Screen
+*---------------------------------------------------------------------*
+SELECTION-SCREEN BEGIN OF BLOCK bk1 WITH FRAME TITLE text-001.
+
+PARAMETERS:
+  rb_up  RADIOBUTTON GROUP r2 USER-COMMAND ucomm DEFAULT 'X',
+  rb_new RADIOBUTTON GROUP r2.
+
+SELECTION-SCREEN END OF BLOCK bk1.
+
+
+SELECTION-SCREEN BEGIN OF BLOCK bk2 WITH FRAME TITLE text-002.
+PARAMETERS:
+  p_out TYPE rlgrap-filename OBLIGATORY.
+SELECTION-SCREEN END OF BLOCK bk2.
+*---------------------------------------------------------------------*
+* File Selection
+*---------------------------------------------------------------------*
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_out.
+
+  CALL FUNCTION 'F4_FILENAME'
+    EXPORTING
+      field_name = 'FILEPATH'
+    IMPORTING
+      file_name  = p_out.
+
+*---------------------------------------------------------------------*
+* Excel Upload
+*---------------------------------------------------------------------*
+START-OF-SELECTION.
+
+  CALL FUNCTION 'TEXT_CONVERT_XLS_TO_SAP'
+    EXPORTING
+      i_line_header        = 'X'
+      i_tab_raw_data       = gs_raw
+      i_filename           = p_out
+    TABLES
+      i_tab_converted_data = gt_final
+    EXCEPTIONS
+      conversion_failed    = 1
+      OTHERS               = 2.
+
+  IF sy-subrc <> 0.
+
+    MESSAGE 'Excel file conversion failed.' TYPE 'E'.
+
+  ENDIF.
+
+*---------------------------------------------------------------------*
+* Check Uploaded Data
+*---------------------------------------------------------------------*
+END-OF-SELECTION.
+
+  IF gt_final IS INITIAL.
+
+    MESSAGE 'No data found in the uploaded Excel file.'
+      TYPE 'S' DISPLAY LIKE 'W'.
+
+    RETURN.
+
+  ENDIF.
+
+*---------------------------------------------------------------------*
+* Process Excel Records
+*---------------------------------------------------------------------*
+  LOOP AT gt_final INTO gs_final.
+
+    CLEAR gs_avl.
+*---------------------------------------------------------------------*
+* Client
+*---------------------------------------------------------------------*
+*    gs_avl-mandt = sy-mandt.
+*---------------------------------------------------------------------*
+* Request ID - 9 Characters
+*---------------------------------------------------------------------*
+    gs_avl-req_id = gs_final-col1.
+*---------------------------------------------------------------------*
+* Date - YYYYMMDD
+*---------------------------------------------------------------------*
+    gs_avl-zdate = gs_final-col2.
+*---------------------------------------------------------------------*
+* Infotype - Default Value
+*---------------------------------------------------------------------*
+    gs_avl-infty = '2006'.
+*---------------------------------------------------------------------*
+* Subtype
+*---------------------------------------------------------------------*
+    gs_avl-subty = gs_final-col5.
+*---------------------------------------------------------------------*
+* Availed For Date - YYYYMMDD
+*---------------------------------------------------------------------*
+    gs_avl-avl_date = gs_final-col6.
+*---------------------------------------------------------------------*
+     gs_avl-name = gs_final-col3.
+      gs_avl-pernr = gs_final-col4.
+* Append to Internal Table
+*---------------------------------------------------------------------*
+    APPEND gs_avl TO gt_avl.
+  ENDLOOP.
+*---------------------------------------------------------------------*
+* Display Uploaded Data
+*---------------------------------------------------------------------*
+  MODIFY zhr_ess_coff_avl FROM TABLE gt_avl.
+  COMMIT WORK.
+  IF gt_avl IS NOT INITIAL.
+    cl_demo_output=>display( gt_avl ).
+  ENDIF.
